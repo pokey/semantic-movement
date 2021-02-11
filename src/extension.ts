@@ -1,252 +1,125 @@
-// From https://github.com/mishkinf/vscode-goto-next-previous-member/blob/master/src/extension.ts
+// Vaguely based on https://github.com/mishkinf/vscode-goto-next-previous-member/blob/master/src/extension.ts
 "use strict";
 import * as vscode from "vscode";
 
 export function activate(context: vscode.ExtensionContext) {
-  let symbolKindsSet: Set<string>;
-  let symbolIndex = 0;
-  let tree: Array<vscode.DocumentSymbol> = [];
-  let dirtyTree = true;
+  const getContainingSymbols = async (editor: vscode.TextEditor) => {
+    const rootSymbols = await vscode.commands.executeCommand<
+      vscode.DocumentSymbol[]
+    >("vscode.executeDocumentSymbolProvider", editor.document.uri);
 
-  const checkSymbolKindPermitted = (symbolKind: vscode.SymbolKind): boolean => {
-    return true;
-  };
+    if (!rootSymbols) {
+      return [];
+    }
 
-  const checkSymbol = (symbolKind: vscode.SymbolKind): boolean => {
-    // https://code.visualstudio.com/api/references/vscode-api#SymbolKind
-    return (
-      symbolKindsSet.size === 0 ||
-      (symbolKind === vscode.SymbolKind.Array && symbolKindsSet.has("array")) ||
-      (symbolKind === vscode.SymbolKind.Boolean &&
-        symbolKindsSet.has("boolean")) ||
-      (symbolKind === vscode.SymbolKind.Class && symbolKindsSet.has("class")) ||
-      (symbolKind === vscode.SymbolKind.Constant &&
-        symbolKindsSet.has("constant")) ||
-      (symbolKind === vscode.SymbolKind.Constructor &&
-        symbolKindsSet.has("constructor")) ||
-      (symbolKind === vscode.SymbolKind.Enum && symbolKindsSet.has("enum")) ||
-      (symbolKind === vscode.SymbolKind.EnumMember &&
-        symbolKindsSet.has("enummember")) ||
-      (symbolKind === vscode.SymbolKind.Event && symbolKindsSet.has("event")) ||
-      (symbolKind === vscode.SymbolKind.Field && symbolKindsSet.has("field")) ||
-      (symbolKind === vscode.SymbolKind.File && symbolKindsSet.has("file")) ||
-      (symbolKind === vscode.SymbolKind.Function &&
-        symbolKindsSet.has("function")) ||
-      (symbolKind === vscode.SymbolKind.Interface &&
-        symbolKindsSet.has("interface")) ||
-      (symbolKind === vscode.SymbolKind.Key && symbolKindsSet.has("key")) ||
-      (symbolKind === vscode.SymbolKind.Method &&
-        symbolKindsSet.has("method")) ||
-      (symbolKind === vscode.SymbolKind.Module &&
-        symbolKindsSet.has("module")) ||
-      (symbolKind === vscode.SymbolKind.Namespace &&
-        symbolKindsSet.has("namespace")) ||
-      (symbolKind === vscode.SymbolKind.Null && symbolKindsSet.has("null")) ||
-      (symbolKind === vscode.SymbolKind.Number &&
-        symbolKindsSet.has("number")) ||
-      (symbolKind === vscode.SymbolKind.Object &&
-        symbolKindsSet.has("object")) ||
-      (symbolKind === vscode.SymbolKind.Operator &&
-        symbolKindsSet.has("operator")) ||
-      (symbolKind === vscode.SymbolKind.Package &&
-        symbolKindsSet.has("package")) ||
-      (symbolKind === vscode.SymbolKind.Property &&
-        symbolKindsSet.has("property")) ||
-      (symbolKind === vscode.SymbolKind.String &&
-        symbolKindsSet.has("string")) ||
-      (symbolKind === vscode.SymbolKind.Struct &&
-        symbolKindsSet.has("struct")) ||
-      (symbolKind === vscode.SymbolKind.TypeParameter &&
-        symbolKindsSet.has("typeparameter")) ||
-      (symbolKind === vscode.SymbolKind.Variable &&
-        symbolKindsSet.has("variable"))
-    );
-  };
+    const containingSymbols: vscode.DocumentSymbol[] = [];
 
-  const refreshTree = async (editor: vscode.TextEditor) => {
-    tree =
-      (await vscode.commands
-        .executeCommand<vscode.DocumentSymbol[]>(
-          "vscode.executeDocumentSymbolProvider",
-          editor.document.uri
+    const addContainingSymbols = (symbols: vscode.DocumentSymbol[]) => {
+      symbols
+        .filter((symbol: vscode.DocumentSymbol) =>
+          symbol.range.contains(editor.selection.active)
         )
-        .then((results) => {
-          if (!results) {
-            return [];
+        .forEach((symbol: vscode.DocumentSymbol) => {
+          containingSymbols.push(symbol);
+          if (symbol.children && symbol.children.length > 0) {
+            addContainingSymbols(symbol.children);
           }
+        });
+    };
 
-          const flattenedSymbols: vscode.DocumentSymbol[] = [];
-          const addSymbols = (
-            flattenedSymbols: vscode.DocumentSymbol[],
-            results: vscode.DocumentSymbol[]
-          ) => {
-            results.forEach((symbol: vscode.DocumentSymbol) => {
-              if (checkSymbolKindPermitted(symbol.kind)) {
-                flattenedSymbols.push(symbol);
-              }
-              if (symbol.children && symbol.children.length > 0) {
-                addSymbols(flattenedSymbols, symbol.children);
-              }
-            });
-          };
+    addContainingSymbols(rootSymbols);
 
-          addSymbols(flattenedSymbols, results);
-
-          return flattenedSymbols.sort(
-            (x: vscode.DocumentSymbol, y: vscode.DocumentSymbol) => {
-              const lineDiff =
-                x.selectionRange.start.line - y.selectionRange.start.line;
-              if (lineDiff === 0) {
-                return (
-                  x.selectionRange.start.character -
-                  y.selectionRange.start.character
-                );
-              }
-              return lineDiff;
-            }
-          );
-        })) || [];
+    return containingSymbols;
   };
 
-  const activeEditorChangeListener = vscode.window.onDidChangeActiveTextEditor(
-    (e) => {
-      dirtyTree = true;
-      tree = [];
-      symbolIndex = 0;
-    }
-  );
-
-  const documentChangeListener = vscode.workspace.onDidChangeTextDocument(
-    (e) => {
-      dirtyTree = true;
-      tree = [];
-      symbolIndex = 0;
-    }
-  );
-
-  const setSymbolIndex = (
-    cursorLine: number,
-    cursorCharacter: number,
-    directionNext: boolean,
-    prevSymbolIndex: number
+  const selectContainingMember = async (
+    editor: vscode.TextEditor,
+    symbolMatcher: (symbol: vscode.DocumentSymbol) => boolean,
+    rangeGetter: (symbol: vscode.DocumentSymbol) => vscode.Range
   ) => {
-    let member;
+    const containingSymbols = await getContainingSymbols(editor);
+    const matchingSymbols = containingSymbols.filter(symbolMatcher);
 
-    if (directionNext) {
-      symbolIndex = -1;
-      do {
-        symbolIndex++;
-        member = tree[symbolIndex].selectionRange.start;
-      } while (
-        (member.line < cursorLine ||
-          (member.line === cursorLine && member.character <= cursorCharacter) ||
-          symbolIndex === prevSymbolIndex) &&
-        symbolIndex < tree.length - 1
-      );
-    } else {
-      symbolIndex = tree.length;
-      do {
-        symbolIndex--;
-        member = tree[symbolIndex].selectionRange.start;
-      } while (
-        (member.line > cursorLine ||
-          (member.line === cursorLine && member.character >= cursorCharacter) ||
-          symbolIndex === prevSymbolIndex) &&
-        symbolIndex > 0
-      );
+    if (matchingSymbols.length === 0) {
+      return;
     }
+
+    var range = rangeGetter(matchingSymbols[matchingSymbols.length - 1]);
+
+    if (range.isEqual(editor.selection) && matchingSymbols.length >= 2) {
+      range = rangeGetter(matchingSymbols[matchingSymbols.length - 2]);
+    }
+
+    editor.selection = new vscode.Selection(range.start, range.end);
+    vscode.commands.executeCommand("revealLine", {
+      lineNumber: range.start.line,
+    });
   };
 
-  const previousMemberCommand = vscode.commands.registerTextEditorCommand(
-    "gotoNextPreviousMember.previousMember",
+  const selectSymbolToken = (symbol: vscode.DocumentSymbol) =>
+    symbol.range.isEqual(symbol.selectionRange)
+      ? new vscode.Range(symbol.range.start, symbol.range.start)
+      : symbol.selectionRange;
+
+  const selectSymbolDefinition = (symbol: vscode.DocumentSymbol) =>
+    symbol.range;
+
+  const anyMember = (symbol: vscode.DocumentSymbol) => true;
+
+  const isFunction = (symbol: vscode.DocumentSymbol) =>
+    symbol.kind === vscode.SymbolKind.Function;
+
+  const isClass = (symbol: vscode.DocumentSymbol) =>
+    symbol.kind === vscode.SymbolKind.Class;
+
+  const jumpToContainingMemberCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.jumpToContainingMember",
     async (editor: vscode.TextEditor) => {
-      let symbol;
-
-      if (tree.length === 0 || dirtyTree) {
-        await refreshTree(editor);
-        dirtyTree = false;
-      }
-
-      // If there are still no symbols skip the rest of the function
-      if (tree.length === 0) {
-        return;
-      }
-
-      const activeCursor = editor.selection.active;
-      setSymbolIndex(
-        activeCursor.line,
-        activeCursor.character,
-        false,
-        symbolIndex
-      );
-
-      symbol = tree[symbolIndex];
-
-      const selectionRangeText = editor.document.getText(symbol.selectionRange);
-      const nameIndex = Math.max(0, selectionRangeText.indexOf(symbol.name));
-
-      if (symbol) {
-        editor.selection = new vscode.Selection(
-          symbol.selectionRange.start.line,
-          symbol.selectionRange.start.character + nameIndex,
-          symbol.selectionRange.start.line,
-          symbol.selectionRange.start.character + nameIndex
-        );
-        vscode.commands.executeCommand("revealLine", {
-          lineNumber: symbol.selectionRange.start.line,
-        });
-      }
-      vscode.window.setStatusBarMessage("Previous Member", 1000);
+      await selectContainingMember(editor, anyMember, selectSymbolToken);
     }
   );
 
-  const nextMemberCommand = vscode.commands.registerTextEditorCommand(
-    "gotoNextPreviousMember.nextMember",
+  const selectContainingMemberCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.selectContainingMember",
     async (editor: vscode.TextEditor) => {
-      let symbol;
+      await selectContainingMember(editor, anyMember, selectSymbolDefinition);
+    }
+  );
 
-      if (tree.length === 0 || dirtyTree) {
-        await refreshTree(editor);
-        dirtyTree = false;
-      }
+  const jumpToContainingClassCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.jumpToContainingClass",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingMember(editor, isClass, selectSymbolToken);
+    }
+  );
 
-      // If there are still no symbols skip the rest of the function
-      if (tree.length === 0) {
-        return;
-      }
+  const selectContainingClassCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.selectContainingClass",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingMember(editor, isClass, selectSymbolDefinition);
+    }
+  );
 
-      const activeCursor = editor.selection.active;
-      setSymbolIndex(
-        activeCursor.line,
-        activeCursor.character,
-        true,
-        symbolIndex
-      );
+  const jumpToContainingFunctionCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.jumpToContainingFunction",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingMember(editor, isFunction, selectSymbolToken);
+    }
+  );
 
-      symbol = tree[symbolIndex];
-
-      const selectionRangeText = editor.document.getText(symbol.selectionRange);
-      const nameIndex = Math.max(0, selectionRangeText.indexOf(symbol.name));
-
-      if (symbol) {
-        editor.selection = new vscode.Selection(
-          symbol.selectionRange.start.line,
-          symbol.selectionRange.start.character + nameIndex,
-          symbol.selectionRange.start.line,
-          symbol.selectionRange.start.character + nameIndex
-        );
-        vscode.commands.executeCommand("revealLine", {
-          lineNumber: symbol.selectionRange.start.line,
-        });
-      }
-      vscode.window.setStatusBarMessage("Next Member", 1000);
+  const selectContainingFunctionCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.selectContainingFunction",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingMember(editor, isFunction, selectSymbolDefinition);
     }
   );
 
   context.subscriptions.push(
-    previousMemberCommand,
-    nextMemberCommand,
-    documentChangeListener,
-    activeEditorChangeListener
+    jumpToContainingClassCommand,
+    jumpToContainingFunctionCommand,
+    jumpToContainingMemberCommand,
+    selectContainingClassCommand,
+    selectContainingFunctionCommand,
+    selectContainingMemberCommand
   );
 }
