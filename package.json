@@ -18,21 +18,21 @@
 	"activationEvents": [
 		"onCommand:semantic-movement.jumpToContainingClass",
 		"onCommand:semantic-movement.jumpToContainingFunction",
-		"onCommand:semantic-movement.jumpToContainingMember",
+		"onCommand:semantic-movement.jumpToContainingSymbol",
 		"onCommand:semantic-movement.selectContainingClass",
 		"onCommand:semantic-movement.selectContainingFunction",
-		"onCommand:semantic-movement.selectContainingMember"
+		"onCommand:semantic-movement.selectContainingSymbol"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
 		"commands": [
 			{
-				"command": "semantic-movement.jumpToContainingMember",
-				"title": "Semantic Movement: Jump to Containing Member"
+				"command": "semantic-movement.jumpToContainingSymbol",
+				"title": "Semantic Movement: Jump to Containing Symbol"
 			},
 			{
-				"command": "semantic-movement.selectContainingMember",
-				"title": "Semantic Movement: Select Containing Member"
+				"command": "semantic-movement.selectContainingSymbol",
+				"title": "Semantic Movement: Select Containing Symbol"
 			},
 			{
 				"command": "semantic-movement.jumpToContainingFunction",

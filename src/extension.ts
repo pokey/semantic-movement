@@ -1,4 +1,3 @@
-// Vaguely based on https://github.com/mishkinf/vscode-goto-next-previous-member/blob/master/src/extension.ts
 "use strict";
 import * as vscode from "vscode";
 
@@ -32,7 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
     return containingSymbols;
   };
 
-  const selectContainingMember = async (
+  const selectContainingSymbol = async (
     editor: vscode.TextEditor,
     symbolMatcher: (symbol: vscode.DocumentSymbol) => boolean,
     rangeGetter: (symbol: vscode.DocumentSymbol) => vscode.Range
@@ -64,62 +63,63 @@ export function activate(context: vscode.ExtensionContext) {
   const selectSymbolDefinition = (symbol: vscode.DocumentSymbol) =>
     symbol.range;
 
-  const anyMember = (symbol: vscode.DocumentSymbol) => true;
+  const anySymbol = (symbol: vscode.DocumentSymbol) => true;
 
   const isFunction = (symbol: vscode.DocumentSymbol) =>
-    symbol.kind === vscode.SymbolKind.Function;
+    symbol.kind === vscode.SymbolKind.Function ||
+    symbol.kind === vscode.SymbolKind.Method;
 
   const isClass = (symbol: vscode.DocumentSymbol) =>
     symbol.kind === vscode.SymbolKind.Class;
 
-  const jumpToContainingMemberCommand = vscode.commands.registerTextEditorCommand(
-    "semantic-movement.jumpToContainingMember",
+  const jumpToContainingSymbolCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.jumpToContainingSymbol",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, anyMember, selectSymbolToken);
+      await selectContainingSymbol(editor, anySymbol, selectSymbolToken);
     }
   );
 
-  const selectContainingMemberCommand = vscode.commands.registerTextEditorCommand(
-    "semantic-movement.selectContainingMember",
+  const selectContainingSymbolCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.selectContainingSymbol",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, anyMember, selectSymbolDefinition);
+      await selectContainingSymbol(editor, anySymbol, selectSymbolDefinition);
     }
   );
 
   const jumpToContainingClassCommand = vscode.commands.registerTextEditorCommand(
     "semantic-movement.jumpToContainingClass",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, isClass, selectSymbolToken);
+      await selectContainingSymbol(editor, isClass, selectSymbolToken);
     }
   );
 
   const selectContainingClassCommand = vscode.commands.registerTextEditorCommand(
     "semantic-movement.selectContainingClass",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, isClass, selectSymbolDefinition);
+      await selectContainingSymbol(editor, isClass, selectSymbolDefinition);
     }
   );
 
   const jumpToContainingFunctionCommand = vscode.commands.registerTextEditorCommand(
     "semantic-movement.jumpToContainingFunction",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, isFunction, selectSymbolToken);
+      await selectContainingSymbol(editor, isFunction, selectSymbolToken);
     }
   );
 
   const selectContainingFunctionCommand = vscode.commands.registerTextEditorCommand(
     "semantic-movement.selectContainingFunction",
     async (editor: vscode.TextEditor) => {
-      await selectContainingMember(editor, isFunction, selectSymbolDefinition);
+      await selectContainingSymbol(editor, isFunction, selectSymbolDefinition);
     }
   );
 
   context.subscriptions.push(
     jumpToContainingClassCommand,
     jumpToContainingFunctionCommand,
-    jumpToContainingMemberCommand,
+    jumpToContainingSymbolCommand,
     selectContainingClassCommand,
     selectContainingFunctionCommand,
-    selectContainingMemberCommand
+    selectContainingSymbolCommand
   );
 }
