@@ -1,22 +1,19 @@
 "use strict";
 import * as vscode from "vscode";
 
+class NoContainingSymbolError extends Error {}
+
 export function activate(context: vscode.ExtensionContext) {
-  const getContainingSymbols = async (editor: vscode.TextEditor) => {
-    const rootSymbols = await vscode.commands.executeCommand<
-      vscode.DocumentSymbol[]
-    >("vscode.executeDocumentSymbolProvider", editor.document.uri);
-
-    if (!rootSymbols) {
-      return [];
-    }
-
+  const getContainingSymbols = (
+    selection: vscode.Selection,
+    rootSymbols: vscode.DocumentSymbol[]
+  ) => {
     const containingSymbols: vscode.DocumentSymbol[] = [];
 
     const addContainingSymbols = (symbols: vscode.DocumentSymbol[]) => {
       symbols
         .filter((symbol: vscode.DocumentSymbol) =>
-          symbol.range.contains(editor.selection.active)
+          symbol.range.contains(selection)
         )
         .forEach((symbol: vscode.DocumentSymbol) => {
           containingSymbols.push(symbol);
@@ -31,28 +28,71 @@ export function activate(context: vscode.ExtensionContext) {
     return containingSymbols;
   };
 
+  const selectContainingSymbolOneCursor = (
+    selection: vscode.Selection,
+    rootSymbols: vscode.DocumentSymbol[],
+    symbolMatcher: (symbol: vscode.DocumentSymbol) => boolean,
+    rangeGetter: (symbol: vscode.DocumentSymbol) => vscode.Range
+  ) => {
+    const containingSymbols = getContainingSymbols(selection, rootSymbols);
+
+    if (containingSymbols.length === 0) {
+      throw new NoContainingSymbolError();
+    }
+
+    let matchingSymbols = containingSymbols.filter(symbolMatcher);
+
+    if (matchingSymbols.length === 0) {
+      // NB: This is a hack. If a function is also a property it appears as a
+      // property, so if there was no function found we assumed that this is
+      // what happened.
+      matchingSymbols = containingSymbols;
+    }
+
+    var range = rangeGetter(matchingSymbols[matchingSymbols.length - 1]);
+
+    if (range.isEqual(selection) && matchingSymbols.length >= 2) {
+      range = rangeGetter(matchingSymbols[matchingSymbols.length - 2]);
+    }
+
+    return new vscode.Selection(range.start, range.end);
+  };
+
   const selectContainingSymbol = async (
     editor: vscode.TextEditor,
     symbolMatcher: (symbol: vscode.DocumentSymbol) => boolean,
     rangeGetter: (symbol: vscode.DocumentSymbol) => vscode.Range
   ) => {
-    const containingSymbols = await getContainingSymbols(editor);
-    const matchingSymbols = containingSymbols.filter(symbolMatcher);
+    const rootSymbols = await vscode.commands.executeCommand<
+      vscode.DocumentSymbol[]
+    >("vscode.executeDocumentSymbolProvider", editor.document.uri);
 
-    if (matchingSymbols.length === 0) {
+    if (!rootSymbols) {
       return;
     }
 
-    var range = rangeGetter(matchingSymbols[matchingSymbols.length - 1]);
+    try {
+      const newSelections = editor.selections.map((selection, selectionIndex) =>
+        selectContainingSymbolOneCursor(
+          selection,
+          rootSymbols,
+          symbolMatcher,
+          rangeGetter
+        )
+      );
 
-    if (range.isEqual(editor.selection) && matchingSymbols.length >= 2) {
-      range = rangeGetter(matchingSymbols[matchingSymbols.length - 2]);
+      editor.selections = newSelections;
+
+      vscode.commands.executeCommand("revealLine", {
+        lineNumber: newSelections[0].start.line,
+      });
+    } catch (e) {
+      if (e instanceof NoContainingSymbolError) {
+        return;
+      } else {
+        throw e; // re-throw the error unchanged
+      }
     }
-
-    editor.selection = new vscode.Selection(range.start, range.end);
-    vscode.commands.executeCommand("revealLine", {
-      lineNumber: range.start.line,
-    });
   };
 
   const selectSymbolToken = (symbol: vscode.DocumentSymbol) =>
@@ -68,6 +108,9 @@ export function activate(context: vscode.ExtensionContext) {
   const isFunction = (symbol: vscode.DocumentSymbol) =>
     symbol.kind === vscode.SymbolKind.Function ||
     symbol.kind === vscode.SymbolKind.Method;
+
+  const isNamedFunction = (symbol: vscode.DocumentSymbol) =>
+    isFunction(symbol) && !symbol.range.isEqual(symbol.selectionRange);
 
   const isClass = (symbol: vscode.DocumentSymbol) =>
     symbol.kind === vscode.SymbolKind.Class;
@@ -114,12 +157,31 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const jumpToContainingNamedFunctionCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.jumpToContainingNamedFunction",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingSymbol(editor, isNamedFunction, selectSymbolToken);
+    }
+  );
+
+  const selectContainingNamedFunctionCommand = vscode.commands.registerTextEditorCommand(
+    "semantic-movement.selectContainingNamedFunction",
+    async (editor: vscode.TextEditor) => {
+      await selectContainingSymbol(
+        editor,
+        isNamedFunction,
+        selectSymbolDefinition
+      );
+    }
+  );
+
   context.subscriptions.push(
     jumpToContainingClassCommand,
     jumpToContainingFunctionCommand,
+    jumpToContainingNamedFunctionCommand,
     jumpToContainingSymbolCommand,
     selectContainingClassCommand,
-    selectContainingFunctionCommand,
+    selectContainingNamedFunctionCommand,
     selectContainingSymbolCommand
   );
 }

@@ -2,7 +2,7 @@
 	"name": "semantic-movement",
 	"displayName": "Semantic Movement",
 	"description": "Move around document leveraging symbol table",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"publisher": "pokey",
 	"license": "MIT",
 	"repository": {
@@ -18,9 +18,11 @@
 	"activationEvents": [
 		"onCommand:semantic-movement.jumpToContainingClass",
 		"onCommand:semantic-movement.jumpToContainingFunction",
+		"onCommand:semantic-movement.jumpToContainingNamedFunction",
 		"onCommand:semantic-movement.jumpToContainingSymbol",
 		"onCommand:semantic-movement.selectContainingClass",
 		"onCommand:semantic-movement.selectContainingFunction",
+		"onCommand:semantic-movement.selectContainingNamedFunction",
 		"onCommand:semantic-movement.selectContainingSymbol"
 	],
 	"main": "./out/extension.js",
@@ -41,6 +43,14 @@
 			{
 				"command": "semantic-movement.selectContainingFunction",
 				"title": "Semantic Movement: Select Containing Function"
+			},
+			{
+				"command": "semantic-movement.jumpToContainingNamedFunction",
+				"title": "Semantic Movement: Jump to Containing Named Function"
+			},
+			{
+				"command": "semantic-movement.selectContainingNamedFunction",
+				"title": "Semantic Movement: Select Containing Named Function"
 			},
 			{
 				"command": "semantic-movement.jumpToContainingClass",
