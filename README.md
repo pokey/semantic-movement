@@ -8,9 +8,11 @@ multiple cursors.
 ## Features
 
 Provides a set of commands for moving and selecting the function, class or
-symbol containing the cursor.
+symbol containing the cursor.  For each command, if you repeat it, it will
+continue moving up the hierarchy and select the larger function / class /
+symbol that contains the cursor.
 
-\!\[Basic demo\]\(images/semantic-movement-1.gif\)
+![Basic demo](images/semantic-movement-1.gif)
 
 ### Commands
 
@@ -29,5 +31,3 @@ symbol containing the cursor.
 
 
 ## Release Notes
-
-Users appreciate release notes as you update your extension.
